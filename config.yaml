@@ -1,0 +1,9 @@
+mediapipe_settings:
+  eye_ar_thresh: 0.22             
+  eye_ar_consec_frames: 10    
+  mouth_ar_thresh: 0.5            
+  mouth_ar_consec_frames: 14    
+
+yolo_settings:
+  confidence_thresh: 0.7          
+  consec_frames: 10               
