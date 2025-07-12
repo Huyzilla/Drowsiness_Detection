@@ -52,8 +52,8 @@ Hệ thống sẽ kích hoạt cảnh báo `!!! CANH BAO BUON NGU !!!` khi bất
 
 ### 1. Clone repository
 ```bash
-git clone https://github.com/Huyzilla/Drowsiness_Detection
-cd drowsiness-detection
+git clone https://github.com/Huyzilla/Drowsiness_Detection.git
+cd drowsiness
 ```
 
 ### 2. Cài đặt các thư viện cần thiết
@@ -63,22 +63,29 @@ pip install -r requirements.txt
 
 ### 3. Chạy ứng dụng
 ```bash
-python hybrid_detect.py
+python main.py
 ```
 
 ## 📂 Cấu trúc thư mục
 ```
-drowsiness-detection/
-├── hybrid_detect.py        
-├── yolo_test.py            
-├── best.pt                 
-├── config.yaml    
-├── requirements.txt
-├── README.md
-└── images/
+drowsiness/
+├── assets/best.pt      
+├── calibration/  
+    ├── calibrator.py         
+├── detectors/
+    ├── eye_detector.py
+    ├── mouth_detector.py  
+    └── yolo_detector.py
+├── images/
     ├── nham_mat.png
     ├── ngap_ngu.png
     └── gat_gu.png
+├── sound/TrinhAiCham.wav
+├── utils/
+    ├── config_loader.py
+    ├── draw_utils.py
+├── requirements.txt
+└── README.md
 ```
 
 ## 📦 Dataset

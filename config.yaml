@@ -6,8 +6,11 @@ mediapipe_settings:
 
 yolo_settings:
   confidence_thresh: 0.7
-  consec_frames: 10
+  consec_frames: 5
 
 calibration_settings:
   calibration_frames: 50      
   ear_calibration_factor: 0.75  
+
+sound_settings:
+  sound_path: 'sound/TrinhAiCham.wav'
