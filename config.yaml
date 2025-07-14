@@ -1,16 +1,14 @@
 mediapipe_settings:
   eye_ar_consec_frames: 18
-  
   mouth_ar_thresh: 0.5
   mouth_ar_consec_frames: 20
 
 yolo_settings:
   confidence_thresh: 0.7
-  consec_frames: 5
+  score_thresh: 25
+  score_increment: 2
+  score_decrement: 1
 
 calibration_settings:
-  calibration_frames: 50      
-  ear_calibration_factor: 0.75  
-
-sound_settings:
-  sound_path: 'sound/TrinhAiCham.wav'
+  calibration_frames: 50
+  ear_calibration_factor: 0.75

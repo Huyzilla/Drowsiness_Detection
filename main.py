@@ -16,13 +16,15 @@ EYE_AR_CONSEC_FRAMES = config['mediapipe_settings']['eye_ar_consec_frames']
 MOUTH_AR_THRESH = config['mediapipe_settings']['mouth_ar_thresh']
 MOUTH_AR_CONSEC_FRAMES = config['mediapipe_settings']['mouth_ar_consec_frames']
 YOLO_CONF_THRESH = config['yolo_settings']['confidence_thresh']
-YOLO_CONSEC_FRAMES = config['yolo_settings']['consec_frames']
+YOLO_SCORE_THRESH = config['yolo_settings']['score_thresh']
+YOLO_SCORE_INCREMENT = config['yolo_settings']['score_increment']
+YOLO_SCORE_DECREMENT = config['yolo_settings']['score_decrement']
 CALIBRATION_FRAMES = config['calibration_settings']['calibration_frames']
 EAR_CALIBRATION_FACTOR = config['calibration_settings']['ear_calibration_factor']
 
 EYE_COUNTER = 0
 MOUTH_COUNTER = 0
-YOLO_COUNTER = 0
+yolo_score = 0 
 is_calibrated = False
 calibration = EARCalibrator(CALIBRATION_FRAMES, EAR_CALIBRATION_FACTOR)
 EYE_AR_THRESH = 0
@@ -94,14 +96,16 @@ while cap.isOpened():
     if is_calibrated:
         detected, coords, conf = yolo_model.detect(frame)
         if detected:
-            YOLO_COUNTER += 1
+            yolo_score += YOLO_SCORE_INCREMENT
             x1, y1, x2, y2 = coords
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
             draw_text(frame, f"YOLO: Drowsy ({conf:.2f})", (x1, y1 - 10), (255, 0, 255))
         else:
-            YOLO_COUNTER = 0
+            yolo_score = max(0, yolo_score - YOLO_SCORE_DECREMENT)
+            yolo_score = min(yolo_score, YOLO_SCORE_THRESH + 5)
+            draw_text(frame, f"YOLO_SCORE: {yolo_score}", (w - 200, 90))
 
-        if YOLO_COUNTER >= YOLO_CONSEC_FRAMES or EYE_COUNTER >= EYE_AR_CONSEC_FRAMES or MOUTH_COUNTER >= MOUTH_AR_CONSEC_FRAMES:
+        if yolo_score >= YOLO_SCORE_THRESH or EYE_COUNTER >= EYE_AR_CONSEC_FRAMES or MOUTH_COUNTER >= MOUTH_AR_CONSEC_FRAMES:
             draw_text(frame, "!!! CANH BAO BUON NGU !!!", (10, 50), (0, 0, 255), 1, 3)
             play_alert_sound()
         else:
