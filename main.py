@@ -54,7 +54,7 @@ def stop_alert_sound():
 
 # --- Initialize models ---
 yolo_model = YoloDrowsinessDetector('assets/best.pt', YOLO_CONF_THRESH)
-yolo_face  = YOLO('C:/Users/ADMIN/Downloads/yolov8n-face.pt')
+yolo_face  = YOLO('assets/yolov8n-face.pt')
 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh    = mp_face_mesh.FaceMesh(
