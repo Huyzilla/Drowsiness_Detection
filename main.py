@@ -1,148 +1,168 @@
+# ===============================
+# 📌 main.py: Hybrid Drowsiness + Simple Nodding Detection (BBox Y)
+# ===============================
+
 import cv2
-import mediapipe as mp
 import numpy as np
+import mediapipe as mp
+import time
+import pygame
+from collections import deque
+from ultralytics import YOLO
 from utils.config_loader import load_config
 from detectors.eye_detector import eye_aspect_ratio
 from detectors.mouth_detector import mouth_aspect_ratio
 from detectors.yolo_detector import YoloDrowsinessDetector
 from calibration.calibrator import EARCalibrator
 from utils.draw_utils import draw_text, draw_contour
-import time
-import pygame
 
-config = load_config('config.yaml')
-EYE_AR_CONSEC_FRAMES = config['mediapipe_settings']['eye_ar_consec_frames']
-MOUTH_AR_THRESH = config['mediapipe_settings']['mouth_ar_thresh']
+# --- Load configuration ---
+config = load_config()
+EYE_AR_CONSEC_FRAMES   = config['mediapipe_settings']['eye_ar_consec_frames']
+MOUTH_AR_THRESH        = config['mediapipe_settings']['mouth_ar_thresh']
 MOUTH_AR_CONSEC_FRAMES = config['mediapipe_settings']['mouth_ar_consec_frames']
-YOLO_CONF_THRESH = config['yolo_settings']['confidence_thresh']
-YOLO_SCORE_THRESH = config['yolo_settings']['score_thresh']
-YOLO_SCORE_INCREMENT = config['yolo_settings']['score_increment']
-YOLO_SCORE_DECREMENT = config['yolo_settings']['score_decrement']
-HEAD_NOD_PIXEL_THRESH = config['head_pose_settings']['nod_pixel_thresh']
-HEAD_CONSEC_FRAMES = config['head_pose_settings']['consec_frames']
-CALIBRATION_FRAMES = config['calibration_settings']['calibration_frames']
+YOLO_CONF_THRESH       = config['yolo_settings']['confidence_thresh']
+YOLO_CONSEC_FRAMES     = config['yolo_settings']['consec_frames']
+CALIBRATION_FRAMES     = config['calibration_settings']['calibration_frames']
 EAR_CALIBRATION_FACTOR = config['calibration_settings']['ear_calibration_factor']
-SOUND_PATH = config['sound_settings']['sound_path']
 
-EYE_COUNTER = 0
+# --- State counters ---
+EYE_COUNTER   = 0
 MOUTH_COUNTER = 0
-HEAD_NOD_COUNTER = 0
-yolo_score = 0
-calibration = EARCalibrator(CALIBRATION_FRAMES, EAR_CALIBRATION_FACTOR)
-
-calibration_started = False
+YOLO_COUNTER  = 0
 is_calibrated = False
-EYE_AR_THRESH = 0
 
+# --- Simple nodding detection (bbox center Y) ---
+CALIBRATION_FRAMES_NOD = 30  # frames to calibrate baseline
+THRESHOLD_NOD_PX      = 20   # px deviation for nod
+baseline_list         = []
+baseline_center_y     = None
+baseline_calibrated   = False
+nodding_detected      = False
+
+# --- Audio setup ---
 pygame.mixer.init()
-alert_sound = pygame.mixer.Sound(SOUND_PATH)
+alert_sound = pygame.mixer.Sound('sound//TrinhAiCham.wav')
 
 def play_alert_sound():
     if not pygame.mixer.get_busy():
-        alert_sound.play(-1)
+        alert_sound.play(loops=-1)
 
 def stop_alert_sound():
-    alert_sound.stop()
+    if pygame.mixer.get_busy():
+        alert_sound.stop()
 
+# --- Initialize models ---
 yolo_model = YoloDrowsinessDetector('assets/best.pt', YOLO_CONF_THRESH)
+yolo_face  = YOLO('C:/Users/ADMIN/Downloads/yolov8n-face.pt')
+
 mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(max_num_faces=1, refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+face_mesh    = mp_face_mesh.FaceMesh(
+    max_num_faces=1,
+    refine_landmarks=True,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
 
-# Các chỉ số điểm mốc
-LEFT_EYE_IDXS = [362, 385, 387, 263, 373, 380]
-RIGHT_EYE_IDXS = [33, 160, 158, 133, 153, 144]
-MOUTH_IDXS = [61, 291, 13, 14]
-TOP_OF_HEAD_IDX = 10 
+# Indices for EAR/MAR
+LEFT_EYE_IDXS  = [362,385,387,263,373,380]
+RIGHT_EYE_IDXS = [33,160,158,133,153,144]
+MOUTH_IDXS     = [61,291,13,14]
 
+# EAR calibrator
+calibrator = EARCalibrator(CALIBRATION_FRAMES, EAR_CALIBRATION_FACTOR)
+
+# --- Start capture ---
+print('[INFO] Starting webcam...')
 cap = cv2.VideoCapture(0)
-time.sleep(1.0)
 
 while cap.isOpened():
     ret, frame = cap.read()
-    if not ret: break
-
+    if not ret:
+        break
     frame = cv2.flip(frame, 1)
     h, w, _ = frame.shape
-    alert_triggered = False
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    mp_results = face_mesh.process(frame_rgb)
-    
-    # TRẠNG THÁI 1: CHỜ BẮT ĐẦU HIỆU CHỈNH
-    if not calibration_started:
-        draw_text(frame, "NHAN PHIM 'c' DE BAT DAU HIEU CHINH", (10, 30), color=(0, 255, 255))
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('c'):
-            calibration_started = True
-    
-    # TRẠNG THÁI 2: ĐANG HIỆU CHỈNH
-    elif not is_calibrated:
-        draw_text(frame, "DANG HIEU CHINH: NHIN THANG, MO MAT BINH THUONG", (10, 30), color=(0, 255, 255))
-        if mp_results.multi_face_landmarks:
-            face_landmarks = mp_results.multi_face_landmarks[0]
-            shape = np.array([[int(lm.x * w), int(lm.y * h)] for lm in face_landmarks.landmark], dtype=np.int32)
-            leftEye = shape[LEFT_EYE_IDXS]; rightEye = shape[RIGHT_EYE_IDXS]
-            ear = (eye_aspect_ratio(leftEye) + eye_aspect_ratio(rightEye)) / 2.0
-            
-            if calibration.update(ear):
-                EYE_AR_THRESH = calibration.get_threshold()
-                initial_head_y = shape[TOP_OF_HEAD_IDX][1]
+    # --- FaceMesh for EAR/MAR ---
+    results = face_mesh.process(rgb)
+    if results.multi_face_landmarks:
+        lm = results.multi_face_landmarks[0].landmark
+        pts = np.array([[int(p.x*w), int(p.y*h)] for p in lm], dtype=np.int32)
+
+        # Compute EAR
+        ear = (eye_aspect_ratio(pts[LEFT_EYE_IDXS]) + eye_aspect_ratio(pts[RIGHT_EYE_IDXS])) / 2.0
+        draw_contour(frame, pts[LEFT_EYE_IDXS])
+        draw_contour(frame, pts[RIGHT_EYE_IDXS])
+        draw_text(frame, f'EAR: {ear:.2f}', (w-150, 30))
+
+        # Compute MAR
+        mar = mouth_aspect_ratio(pts[MOUTH_IDXS])
+        draw_contour(frame, pts[MOUTH_IDXS])
+        draw_text(frame, f'MAR: {mar:.2f}', (w-150, 60))
+
+        # Calibrate EAR threshold
+        if not is_calibrated:
+            draw_text(frame, 'Calibrating EAR...', (10,30), (0,255,255))
+            if calibrator.update(ear):
+                EYE_AR_THRESH = calibrator.get_threshold()
                 is_calibrated = True
-                print(f"Hieu chinh hoan tat. Nguong EAR ca nhan: {EYE_AR_THRESH:.3f}, Vi tri dau: {initial_head_y}")
-        else: # Nếu không thấy mặt trong lúc hiệu chỉnh
-             draw_text(frame, "Khong tim thay khuon mat!", (10, 60), color=(0, 0, 255))
+                print(f'[INFO] EAR threshold: {EYE_AR_THRESH:.3f}')
+        else:
+            # Update counters
+            EYE_COUNTER   = EYE_COUNTER + 1 if ear < EYE_AR_THRESH else 0
+            MOUTH_COUNTER = MOUTH_COUNTER + 1 if mar > MOUTH_AR_THRESH else 0
 
-    # TRẠNG THÁI 3: ĐÃ HIỆU CHỈNH, BẮT ĐẦU GIÁM SÁT
-    else:
-        if mp_results.multi_face_landmarks:
-            face_landmarks = mp_results.multi_face_landmarks[0]
-            shape = np.array([[int(lm.x * w), int(lm.y * h)] for lm in face_landmarks.landmark], dtype=np.int32)
-            leftEye = shape[LEFT_EYE_IDXS]; rightEye = shape[RIGHT_EYE_IDXS]; mouth = shape[MOUTH_IDXS]
-            ear = (eye_aspect_ratio(leftEye) + eye_aspect_ratio(rightEye)) / 2.0
-            mar = mouth_aspect_ratio(mouth)
-            
-            if ear < EYE_AR_THRESH: EYE_COUNTER += 1
-            else: EYE_COUNTER = 0
-            if mar > MOUTH_AR_THRESH: MOUTH_COUNTER += 1
-            else: MOUTH_COUNTER = 0
+    # --- YOLO face detection for nodding ---
+    nodding_detected = False
+    res_face = yolo_face.predict(frame, verbose=False)
+    if res_face and res_face[0].boxes.xyxy:
+        x1,y1,x2,y2 = res_face[0].boxes.xyxy[0].int().tolist()
+        cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
+        cv2.rectangle(frame, (x1,y1), (x2,y2), (0,255,0), 2)
+        cv2.circle(frame, (cx,cy), 5, (0,0,255), -1)
 
-            current_head_y = shape[TOP_OF_HEAD_IDX][1]
-            y_difference = current_head_y - initial_head_y
-            if y_difference > HEAD_NOD_PIXEL_THRESH: HEAD_NOD_COUNTER += 1
-            else: HEAD_NOD_COUNTER = 0
+        # Calibrate baseline center Y
+        if not baseline_calibrated:
+            baseline_list.append(cy)
+            if len(baseline_list) >= CALIBRATION_FRAMES_NOD:
+                baseline_center_y = sum(baseline_list) / len(baseline_list)
+                baseline_calibrated = True
+                print(f'[INFO] Baseline center Y: {baseline_center_y:.1f}')
+        else:
+            # Detect nodding if Y deviates by threshold
+            if abs(cy - baseline_center_y) > THRESHOLD_NOD_PX:
+                nodding_detected = True
 
-            draw_contour(frame, leftEye); draw_contour(frame, rightEye); draw_contour(frame, mouth)
-            draw_text(frame, f"MAR: {mar:.2f}", (w - 150, 60))
-            draw_text(frame, f"EAR: {ear:.2f} (T: {EYE_AR_THRESH:.2f})", (w - 220, 30))
-            draw_text(frame, f"HEAD_Y_DIFF: {y_difference}", (w - 220, 90))
-        
-        # Xử lý YOLO
+    # --- YOLO Drowsiness Detector ---
+    if is_calibrated:
         detected, coords, conf = yolo_model.detect(frame)
         if detected:
-            yolo_score += YOLO_SCORE_INCREMENT
-            x1, y1, x2, y2 = coords
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
-            draw_text(frame, f"YOLO: Drowsy ({conf:.2f})", (x1, y1 - 10), (255, 0, 255))
+            YOLO_COUNTER += 1
+            x1,y1,x2,y2 = coords
+            cv2.rectangle(frame, (x1,y1), (x2,y2), (255,0,255), 2)
+            draw_text(frame, f'YOLO: Drowsy ({conf:.2f})', (x1, y1-10), (255,0,255))
         else:
-            yolo_score = max(0, yolo_score - YOLO_SCORE_DECREMENT)
-        
-        yolo_score = min(yolo_score, YOLO_SCORE_THRESH + 5)
-        draw_text(frame, f"YOLO_SCORE: {yolo_score}", (w - 200, 120))
+            YOLO_COUNTER = 0
 
-        # Tổng hợp cảnh báo
-        if yolo_score >= YOLO_SCORE_THRESH or EYE_COUNTER >= EYE_AR_CONSEC_FRAMES or HEAD_NOD_COUNTER >= HEAD_CONSEC_FRAMES or MOUTH_COUNTER >= MOUTH_AR_CONSEC_FRAMES:
-            alert_triggered = True
-        
-        if alert_triggered:
-            draw_text(frame, "!!! CANH BAO BUON NGU !!!", (10, 50), (0, 0, 255), 1, 3)
-            play_alert_sound()
-        else:
-            stop_alert_sound()
+    # --- Combined Alert Logic ---
+    alert = (
+        EYE_COUNTER   >= EYE_AR_CONSEC_FRAMES or
+        MOUTH_COUNTER >= MOUTH_AR_CONSEC_FRAMES or
+        YOLO_COUNTER  >= YOLO_CONSEC_FRAMES or
+        nodding_detected
+    )
+    if alert:
+        play_alert_sound()
+        if nodding_detected:
+            draw_text(frame, 'WARNING: Nodding detected', (20,140), (0,0,255), 1, 2)
+    else:
+        stop_alert_sound()
 
-    cv2.imshow("Hybrid Drowsiness Detection", frame)
+    cv2.imshow('Hybrid Drowsiness Detection', frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-stop_alert_sound()
 cap.release()
 cv2.destroyAllWindows()
