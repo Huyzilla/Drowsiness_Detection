@@ -12,13 +12,16 @@ from calibration.calibrator import EARCalibrator
 from utils.draw_utils import draw_text, draw_contour
 
 config = {
-    'mediapipe_settings': {'eye_ar_consec_frames': 15, 'mouth_ar_thresh': 0.6, 'mouth_ar_consec_frames': 15},
+    'mediapipe_settings': {'eye_ar_consec_frames': 20, 'mouth_ar_thresh': 0.6, 'mouth_ar_consec_frames': 20},
     'head_pose_settings': {
-        'y_deviation_thresh': 20,       # Ngưỡng lệch dọc 
-        'angle_deviation_thresh': 15,   # Ngưỡng lệch góc 
-        'consec_frames': 15
+        'y_deviation_ratio_thresh': 0.18, # Tỷ lệ lệch y so với chiều cao khung hình
+        'angle_deviation_thresh': 20, 
+        'score_thresh': 20,   # Ngưỡng điểm cho tư thế đầu 
+        'score_increment': 2,
+        'score_decrement': 1,
+        'consec_frames': 20 
     },
-    'yolo_settings': {'confidence_thresh': 0.5, 'score_thresh': 20, 'score_increment': 2, 'score_decrement': 1},
+    'yolo_settings': {'confidence_thresh': 0.6, 'score_thresh': 20, 'score_increment': 2, 'score_decrement': 1},
     'calibration_settings': {'calibration_frames': 30, 'ear_calibration_factor': 0.85},
     'sound_settings': {'sound_path': 'sound/TrinhAiCham.wav'}
 }
@@ -29,9 +32,11 @@ MOUTH_AR_THRESH = config['mediapipe_settings']['mouth_ar_thresh']
 MOUTH_AR_CONSEC_FRAMES = config['mediapipe_settings']['mouth_ar_consec_frames']
 
 # Head Pose 
-HEAD_Y_DEVIATION_THRESH = config['head_pose_settings']['y_deviation_thresh']
-HEAD_ANGLE_DEVIATION_THRESH = config['head_pose_settings']['angle_deviation_thresh']
-HEAD_CONSEC_FRAMES = config['head_pose_settings']['consec_frames']
+HEAD_Y_RATIO_THRESH = config['head_pose_settings']['y_deviation_ratio_thresh']
+HEAD_ANGLE_THRESH = config['head_pose_settings']['angle_deviation_thresh']
+HEAD_SCORE_THRESH = config['head_pose_settings']['score_thresh']
+HEAD_SCORE_INCREMENT = config['head_pose_settings']['score_increment']
+HEAD_SCORE_DECREMENT = config['head_pose_settings']['score_decrement']
 
 # YOLO
 YOLO_CONF_THRESH = config['yolo_settings']['confidence_thresh']
@@ -43,7 +48,9 @@ CALIBRATION_FRAMES = config['calibration_settings']['calibration_frames']
 EAR_CALIBRATION_FACTOR = config['calibration_settings']['ear_calibration_factor']
 SOUND_PATH = config['sound_settings']['sound_path']
 
-EYE_COUNTER = 0; MOUTH_COUNTER = 0; HEAD_POSE_COUNTER = 0; yolo_score = 0
+EYE_COUNTER = 0; MOUTH_COUNTER = 0; yolo_score = 0
+HEAD_POSE_SCORE = 0
+
 calibration_started = False; is_calibrated = False; monitoring_started = False
 EYE_AR_THRESH = 0
 baseline_head_y = 0; baseline_head_angle = 0
@@ -144,9 +151,13 @@ while cap.isOpened():
             # Tính tư thế đầu
             top_head_pt = shape[TOP_HEAD_IDX]
             nose_tip_pt = shape[NOSE_TIP_IDX]
+            chin_pt = shape[152] # cằm 
+
+            face_height = np.linalg.norm(top_head_pt - chin_pt) # Chiều cao khuôn mặt
+            
             current_head_y = top_head_pt[1]
             current_head_angle = calculate_head_angle(top_head_pt, nose_tip_pt)
-            
+
             # Tính độ lệch
             y_deviation = current_head_y - baseline_head_y
             angle_deviation = current_head_angle - baseline_head_angle
@@ -158,11 +169,18 @@ while cap.isOpened():
             if mar > MOUTH_AR_THRESH: MOUTH_COUNTER += 1
             else: MOUTH_COUNTER = 0
 
-            # Cúi/ngửa đầu hoặc nghiêng trái/phải
-            if y_deviation > HEAD_Y_DEVIATION_THRESH or abs(angle_deviation) > HEAD_ANGLE_DEVIATION_THRESH:
-                HEAD_POSE_COUNTER += 1
+            is_nodding = False
+            # Kiểm tra cúi/ngửa đầu
+            if y_deviation > HEAD_Y_RATIO_THRESH * face_height:
+                is_nodding = True
+            # Xét nghiêng đầu
+            elif abs(angle_deviation) > HEAD_ANGLE_THRESH:
+                is_nodding = True
+
+            if is_nodding:
+                HEAD_POSE_SCORE = min(HEAD_SCORE_THRESH + 5, HEAD_POSE_SCORE + HEAD_SCORE_INCREMENT)
             else:
-                HEAD_POSE_COUNTER = 0
+                HEAD_POSE_SCORE = max(0, HEAD_POSE_SCORE - HEAD_SCORE_DECREMENT)
             
             # Vẽ thông tin
             draw_contour(frame, leftEye); draw_contour(frame, rightEye); draw_contour(frame, mouth)
@@ -172,9 +190,9 @@ while cap.isOpened():
 
             draw_text(frame, f"EAR: {ear:.2f} (T: {EYE_AR_THRESH:.2f})", (w - 250, 30))
             draw_text(frame, f"MAR: {mar:.2f}", (w - 250, 60))
-            draw_text(frame, f"Y_Dev: {y_deviation:.2f} (T: {HEAD_Y_DEVIATION_THRESH})", (w - 250, 90))
-            draw_text(frame, f"Angle_Dev: {angle_deviation:.2f} (T: {HEAD_ANGLE_DEVIATION_THRESH})", (w - 250, 120))
-        
+            draw_text(frame, f"Y_Dev_Ratio: {y_deviation/face_height:.2f} (T: {HEAD_Y_RATIO_THRESH:.2f})", (w - 280, 90))
+            draw_text(frame, f"Angle_Dev: {angle_deviation:.2f} (T: {HEAD_ANGLE_THRESH:.2f})", (w - 280, 120))
+            draw_text(frame, f"HEAD_POSE_SCORE: {HEAD_POSE_SCORE}", (w - 280, 150))
         # Xử lý YOLO 
         detected, coords, conf = yolo_model.detect(frame)
         if detected:
@@ -185,10 +203,10 @@ while cap.isOpened():
         else:
             yolo_score = max(0, yolo_score - YOLO_SCORE_DECREMENT)
         yolo_score = min(yolo_score, YOLO_SCORE_THRESH + 5)
-        draw_text(frame, f"YOLO_SCORE: {yolo_score}", (w - 220, 150))
+        draw_text(frame, f"YOLO_SCORE: {yolo_score}", (w - 300, 150))
 
         # Tổng hợp cảnh báo
-        if EYE_COUNTER >= EYE_AR_CONSEC_FRAMES or HEAD_POSE_COUNTER >= HEAD_CONSEC_FRAMES or yolo_score >= YOLO_SCORE_THRESH:
+        if EYE_COUNTER >= EYE_AR_CONSEC_FRAMES or HEAD_POSE_SCORE >= HEAD_SCORE_THRESH or yolo_score >= YOLO_SCORE_THRESH:
             alert_triggered = True
         
         if alert_triggered:
