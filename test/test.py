@@ -1,12 +1,12 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-from utils.config_loader import load_config
+from my_utils.config_loader import load_config
 from detectors.eye_detector import eye_aspect_ratio
 from detectors.mouth_detector import mouth_aspect_ratio
 from detectors.yolo_detector import YoloDrowsinessDetector
 from calibration.calibrator import EARCalibrator
-from utils.draw_utils import draw_text, draw_contour
+from my_utils.draw_utils import draw_text, draw_contour
 import time
 import pygame
 import math
@@ -52,7 +52,7 @@ def stop_alert_sound():
 
 # Tải các mô hình
 print("[INFO] Tải các mô hình...")
-yolo_model = YoloDrowsinessDetector('assets/best.pt', YOLO_CONF_THRESH) # Đảm bảo đường dẫn này đúng
+yolo_model = YoloDrowsinessDetector('best.pt', YOLO_CONF_THRESH) 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(max_num_faces=1, refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 

@@ -4,24 +4,24 @@ import numpy as np
 import math
 import time
 import pygame
-from utils.config_loader import load_config
+from my_utils.config_loader import load_config
 from detectors.eye_detector import eye_aspect_ratio
 from detectors.mouth_detector import mouth_aspect_ratio
 from detectors.yolo_detector import YoloDrowsinessDetector
 from calibration.calibrator import EARCalibrator
-from utils.draw_utils import draw_text, draw_contour
+from my_utils.draw_utils import draw_text, draw_contour
 
 config = {
     'mediapipe_settings': {'eye_ar_consec_frames': 20, 'mouth_ar_thresh': 0.6, 'mouth_ar_consec_frames': 20},
     'head_pose_settings': {
         'y_deviation_ratio_thresh': 0.18, # Tỷ lệ lệch y so với chiều cao khung hình
         'angle_deviation_thresh': 20, 
-        'score_thresh': 20,   # Ngưỡng điểm cho tư thế đầu 
+        'score_thresh': 45,   # Ngưỡng điểm cho tư thế đầu 
         'score_increment': 2,
         'score_decrement': 1,
         'consec_frames': 20 
     },
-    'yolo_settings': {'confidence_thresh': 0.6, 'score_thresh': 20, 'score_increment': 2, 'score_decrement': 1},
+    'yolo_settings': {'confidence_thresh': 0.92, 'score_thresh': 45, 'score_increment': 2, 'score_decrement': 1},
     'calibration_settings': {'calibration_frames': 30, 'ear_calibration_factor': 0.85},
     'sound_settings': {'sound_path': 'sound/TrinhAiCham.wav'}
 }
@@ -64,7 +64,8 @@ def play_alert_sound():
 def stop_alert_sound():
     alert_sound.stop()
 
-yolo_model = YoloDrowsinessDetector('assets/best.pt', YOLO_CONF_THRESH) 
+yolo_model = YoloDrowsinessDetector('best.pt', YOLO_CONF_THRESH) 
+# yolo_model = YoloDrowsinessONNXDetector('assets/yolox_nano.onnx', YOLO_CONF_THRESH) 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(max_num_faces=1, refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 

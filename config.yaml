@@ -4,7 +4,7 @@ mediapipe_settings:
   mouth_ar_consec_frames: 20
 
 yolo_settings:
-  confidence_thresh: 0.65 
+  confidence_thresh: 0.8
   score_thresh: 20 
   score_increment: 2
   score_decrement: 1

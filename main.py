@@ -4,12 +4,12 @@ import numpy as np
 import math
 import time
 import pygame
-from utils.config_loader import load_config
+from my_utils.config_loader import load_config
 from detectors.eye_detector import eye_aspect_ratio
 from detectors.mouth_detector import mouth_aspect_ratio
 from detectors.yolox_onnx_detector import YoloDrowsinessONNXDetector
 from calibration.calibrator import EARCalibrator
-from utils.draw_utils import draw_text, draw_contour
+from my_utils.draw_utils import draw_text, draw_contour
 
 config = {
     'mediapipe_settings': {'eye_ar_consec_frames': 20, 'mouth_ar_thresh': 0.6, 'mouth_ar_consec_frames': 20},
