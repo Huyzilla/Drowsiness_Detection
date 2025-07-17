@@ -8,6 +8,7 @@ from my_utils.config_loader import load_config
 from detectors.eye_detector import eye_aspect_ratio
 from detectors.mouth_detector import mouth_aspect_ratio
 from detectors.yolo_detector import YoloDrowsinessDetector
+from detectors.yolox_onnx_detector import YoloDrowsinessONNXDetector
 from calibration.calibrator import EARCalibrator
 from my_utils.draw_utils import draw_text, draw_contour
 
@@ -17,11 +18,11 @@ config = {
         'y_deviation_ratio_thresh': 0.18, # Tỷ lệ lệch y so với chiều cao khung hình
         'angle_deviation_thresh': 20, 
         'score_thresh': 45,   # Ngưỡng điểm cho tư thế đầu 
-        'score_increment': 2,
+        'score_increment': 1,
         'score_decrement': 1,
         'consec_frames': 20 
     },
-    'yolo_settings': {'confidence_thresh': 0.92, 'score_thresh': 45, 'score_increment': 2, 'score_decrement': 1},
+    'yolo_settings': {'confidence_thresh': 0.9, 'score_thresh': 45, 'score_increment': 2, 'score_decrement': 1},
     'calibration_settings': {'calibration_frames': 30, 'ear_calibration_factor': 0.85},
     'sound_settings': {'sound_path': 'sound/TrinhAiCham.wav'}
 }
@@ -49,7 +50,7 @@ EAR_CALIBRATION_FACTOR = config['calibration_settings']['ear_calibration_factor'
 SOUND_PATH = config['sound_settings']['sound_path']
 
 EYE_COUNTER = 0; MOUTH_COUNTER = 0; yolo_score = 0
-HEAD_POSE_SCORE = 0
+NOD_SCORE = 0; TILT_SCORE = 0;
 
 calibration_started = False; is_calibrated = False; monitoring_started = False
 EYE_AR_THRESH = 0
@@ -64,8 +65,8 @@ def play_alert_sound():
 def stop_alert_sound():
     alert_sound.stop()
 
-yolo_model = YoloDrowsinessDetector('best.pt', YOLO_CONF_THRESH) 
-# yolo_model = YoloDrowsinessONNXDetector('assets/yolox_nano.onnx', YOLO_CONF_THRESH) 
+yolo_model = YoloDrowsinessDetector('assets/best.pt', YOLO_CONF_THRESH) 
+# yolo_model = YoloDrowsinessONNXDetector('best.pt', YOLO_CONF_THRESH) 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(max_num_faces=1, refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
@@ -170,19 +171,18 @@ while cap.isOpened():
             if mar > MOUTH_AR_THRESH: MOUTH_COUNTER += 1
             else: MOUTH_COUNTER = 0
 
-            is_nodding = False
+            
             # Kiểm tra cúi/ngửa đầu
             if y_deviation > HEAD_Y_RATIO_THRESH * face_height:
-                is_nodding = True
-            # Xét nghiêng đầu
-            elif abs(angle_deviation) > HEAD_ANGLE_THRESH:
-                is_nodding = True
-
-            if is_nodding:
-                HEAD_POSE_SCORE = min(HEAD_SCORE_THRESH + 5, HEAD_POSE_SCORE + HEAD_SCORE_INCREMENT)
+                NOD_SCORE = min(HEAD_SCORE_THRESH + 5, NOD_SCORE + HEAD_SCORE_INCREMENT)
             else:
-                HEAD_POSE_SCORE = max(0, HEAD_POSE_SCORE - HEAD_SCORE_DECREMENT)
-            
+                NOD_SCORE = max(0, NOD_SCORE - HEAD_SCORE_DECREMENT)
+            # Xét nghiêng đầu
+            if abs(angle_deviation) > HEAD_ANGLE_THRESH:
+                TILT_SCORE = min(HEAD_SCORE_THRESH + 5, TILT_SCORE + HEAD_SCORE_INCREMENT)
+            else:
+                TILT_SCORE = max(0, TILT_SCORE - HEAD_SCORE_DECREMENT)
+
             # Vẽ thông tin
             draw_contour(frame, leftEye); draw_contour(frame, rightEye); draw_contour(frame, mouth)
             cv2.circle(frame, tuple(top_head_pt), 3, (0, 255, 0), -1)
@@ -191,9 +191,11 @@ while cap.isOpened():
 
             draw_text(frame, f"EAR: {ear:.2f} (T: {EYE_AR_THRESH:.2f})", (w - 250, 30))
             draw_text(frame, f"MAR: {mar:.2f}", (w - 250, 60))
-            draw_text(frame, f"Y_Dev_Ratio: {y_deviation/face_height:.2f} (T: {HEAD_Y_RATIO_THRESH:.2f})", (w - 280, 90))
-            draw_text(frame, f"Angle_Dev: {angle_deviation:.2f} (T: {HEAD_ANGLE_THRESH:.2f})", (w - 280, 120))
-            draw_text(frame, f"HEAD_POSE_SCORE: {HEAD_POSE_SCORE}", (w - 280, 150))
+            draw_text(frame, f"Y_Dev_Ratio: {y_deviation/face_height:.2f} (T: {HEAD_Y_RATIO_THRESH:.2f})", (w - 250, 90))
+            draw_text(frame, f"Angle_Dev: {angle_deviation:.2f} (T: {HEAD_ANGLE_THRESH:.2f})", (w - 250, 120))
+            draw_text(frame, f"NOD_SCORE: {NOD_SCORE}", (w - 280, 150))
+            draw_text(frame, f"TILT_SCORE: {TILT_SCORE}", (w - 280, 180))
+
         # Xử lý YOLO 
         detected, coords, conf = yolo_model.detect(frame)
         if detected:
@@ -204,10 +206,10 @@ while cap.isOpened():
         else:
             yolo_score = max(0, yolo_score - YOLO_SCORE_DECREMENT)
         yolo_score = min(yolo_score, YOLO_SCORE_THRESH + 5)
-        draw_text(frame, f"YOLO_SCORE: {yolo_score}", (w - 300, 150))
+        draw_text(frame, f"YOLO_SCORE: {yolo_score}", (w - 280, 210))
 
         # Tổng hợp cảnh báo
-        if EYE_COUNTER >= EYE_AR_CONSEC_FRAMES or HEAD_POSE_SCORE >= HEAD_SCORE_THRESH or yolo_score >= YOLO_SCORE_THRESH:
+        if EYE_COUNTER >= EYE_AR_CONSEC_FRAMES or NOD_SCORE >= HEAD_SCORE_THRESH or TILT_SCORE >= HEAD_SCORE_THRESH or yolo_score >= YOLO_SCORE_THRESH:
             alert_triggered = True
         
         if alert_triggered:

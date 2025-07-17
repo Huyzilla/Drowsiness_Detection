@@ -2,11 +2,11 @@ import onnxruntime as ort
 import numpy as np
 
 class YoloDrowsinessONNXDetector:
-    def __init__(self, model_path='assets/yolox_nano.onnx', conf_thresh=0.6):
+    def __init__(self, model_path='best.onnx', conf_thresh=0.92):
         self.session = ort.InferenceSession(model_path)
         self.input_name = self.session.get_inputs()[0].name
         self.conf_thresh = conf_thresh
-        self.input_size = 416
+        self.input_size = 640
 
     def _preprocess(self, frame):
         import cv2

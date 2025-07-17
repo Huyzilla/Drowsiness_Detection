@@ -25,7 +25,7 @@ import platform
 import pathlib
 
 class YoloDrowsinessDetector:
-    def __init__(self, model_path, confidence_thresh=0.8, target_class_name='drowsy'):
+    def __init__(self, model_path, confidence_thresh=0.9, target_class_name='drowsy'):
         self.confidence_thresh = confidence_thresh
         self.target_class_name = target_class_name 
 
@@ -71,5 +71,17 @@ class YoloDrowsinessDetector:
             conf = best_detection['confidence']
             
             return True, coords, conf
+        
+        # Nếu không phát hiện drowsy, chọn detection có conf cao nhất khác 
+        if not detections.empty:
+            # .loc[] là phương thức trong Pandas dùng để truy xuất hàng hoặc cột theo label (tên chỉ số)
+            best_detection = detections.loc[detections['confidence'].idxmax()]
+            x1 = int(best_detection['xmin'])	
+            y1 = int(best_detection['ymin'])
+            x2 = int(best_detection['xmax'])
+            y2 = int(best_detection['ymax'])
+            coords = [x1, y1, x2, y2]
+            conf = best_detection['confidence']
+            return False, coords, conf
             
         return False, [], 0.0
