@@ -12,20 +12,7 @@ from detectors.yolox_onnx_detector import YoloDrowsinessONNXDetector
 from calibration.calibrator import EARCalibrator
 from my_utils.draw_utils import draw_text, draw_contour
 
-config = {
-    'mediapipe_settings': {'eye_ar_consec_frames': 20, 'mouth_ar_thresh': 0.6, 'mouth_ar_consec_frames': 20},
-    'head_pose_settings': {
-        'y_deviation_ratio_thresh': 0.18, # Tỷ lệ lệch y so với chiều cao khung hình
-        'angle_deviation_thresh': 20, 
-        'score_thresh': 45,   # Ngưỡng điểm cho tư thế đầu 
-        'score_increment': 1,
-        'score_decrement': 1,
-        'consec_frames': 20 
-    },
-    'yolo_settings': {'confidence_thresh': 0.9, 'score_thresh': 45, 'score_increment': 2, 'score_decrement': 1},
-    'calibration_settings': {'calibration_frames': 30, 'ear_calibration_factor': 0.85},
-    'sound_settings': {'sound_path': 'sound/TrinhAiCham.wav'}
-}
+config = load_config()
 
 # MediaPipe
 EYE_AR_CONSEC_FRAMES = config['mediapipe_settings']['eye_ar_consec_frames']

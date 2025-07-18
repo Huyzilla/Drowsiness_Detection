@@ -8,23 +8,11 @@ from my_utils.config_loader import load_config
 from detectors.eye_detector import eye_aspect_ratio
 from detectors.mouth_detector import mouth_aspect_ratio
 from detectors.yolox_onnx_detector import YoloDrowsinessONNXDetector
+from detectors.yolo_detector import YoloDrowsinessDetector
 from calibration.calibrator import EARCalibrator
 from my_utils.draw_utils import draw_text, draw_contour
 
-config = {
-    'mediapipe_settings': {'eye_ar_consec_frames': 20, 'mouth_ar_thresh': 0.6, 'mouth_ar_consec_frames': 20},
-    'head_pose_settings': {
-        'y_deviation_ratio_thresh': 0.18,  # Tỷ lệ lệch y so với chiều cao khuôn mặt
-        'angle_deviation_thresh': 20,
-        'score_thresh': 20,
-        'score_increment': 2,
-        'score_decrement': 1,
-        'consec_frames': 20
-    },
-    'yolo_settings': {'confidence_thresh': 0.6, 'score_thresh': 20, 'score_increment': 2, 'score_decrement': 1},
-    'calibration_settings': {'calibration_frames': 30, 'ear_calibration_factor': 0.85},
-    'sound_settings': {'sound_path': 'sound/TrinhAiCham.wav'}
-}
+config = load_config()
 
 # MediaPipe
 EYE_AR_CONSEC_FRAMES = config['mediapipe_settings']['eye_ar_consec_frames']
@@ -49,8 +37,10 @@ EAR_CALIBRATION_FACTOR = config['calibration_settings']['ear_calibration_factor'
 SOUND_PATH = config['sound_settings']['sound_path']
 
 # Các biến trạng thái
-EYE_COUNTER = 0;
-MOUTH_COUNTER = 0;
+EYE_COUNTER = 0
+MOUTH_COUNTER = 0
+NOD_SCORE = 0
+TILT_SCORE = 0
 yolo_score = 0
 
 calibration_started = False;
@@ -77,7 +67,7 @@ def stop_alert_sound():
 
 
 # Khởi tạo các model
-yolo_model = YoloDrowsinessONNXDetector('best.onnx', YOLO_CONF_THRESH)
+yolo_model = YoloDrowsinessDetector('assets/best.pt', YOLO_CONF_THRESH)
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(max_num_faces=1, refine_landmarks=True, min_detection_confidence=0.5,
                                   min_tracking_confidence=0.5)
@@ -186,8 +176,6 @@ while cap.isOpened():
             else:
                 MOUTH_COUNTER = 0
 
-            NOD_SCORE = 0
-            TILT_SCORE = 0
             if y_deviation > HEAD_Y_RATIO_THRESH * face_height:
                 NOD_SCORE = min(HEAD_SCORE_THRESH + 5, NOD_SCORE + HEAD_SCORE_INCREMENT)
             else:
@@ -213,22 +201,16 @@ while cap.isOpened():
         yolo_detections = yolo_model.detect(frame)
 
         # 2. Kiểm tra xem danh sách có chứa đối tượng nào không
-        if yolo_detections:
-            # Nếu có, tăng điểm và vẽ tất cả các đối tượng tìm thấy
+        detected, coords, conf = yolo_model.detect(frame)
+        if detected:
             yolo_score += YOLO_SCORE_INCREMENT
-            for detection in yolo_detections:
-                box = detection['box']
-                conf = detection['score']
-                x1, y1, x2, y2 = box
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
-                draw_text(frame, f"YOLO: Drowsy ({conf:.2f})", (x1, y1 - 10), (255, 0, 255))
+            x1, y1, x2, y2 = coords
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
+            draw_text(frame, f"YOLO: Drowsy ({conf:.2f})", (x1, y1 - 10), (255, 0, 255))
         else:
-            # Nếu không tìm thấy đối tượng nào, giảm điểm
             yolo_score = max(0, yolo_score - YOLO_SCORE_DECREMENT)
-
-        # Giới hạn điểm số tối đa
         yolo_score = min(yolo_score, YOLO_SCORE_THRESH + 5)
-        draw_text(frame, f"YOLO_SCORE: {yolo_score}", (w - 280, 180))
+        draw_text(frame, f"YOLO_SCORE: {yolo_score}", (w - 280, 210))
 
         # Tổng hợp cảnh báo
         if EYE_COUNTER >= EYE_AR_CONSEC_FRAMES or NOD_SCORE >= HEAD_SCORE_THRESH or TILT_SCORE >= HEAD_SCORE_THRESH or yolo_score >= YOLO_SCORE_THRESH:

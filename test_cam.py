@@ -1,8 +1,8 @@
 import cv2
 from detectors.yolo_detector import YoloDrowsinessDetector
 
-model_path = 'best.pt'  
-confidence_threshold = 0.8
+model_path = 'assets/best.pt'  
+confidence_threshold = 0.7
 yolo = YoloDrowsinessDetector(model_path, confidence_threshold)
 
 cap = cv2.VideoCapture(0)
