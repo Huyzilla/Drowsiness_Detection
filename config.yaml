@@ -12,7 +12,7 @@ head_pose_settings:
   consec_frames: 20
 
 yolo_settings:
-  confidence_thresh: 0.7  
+  confidence_thresh: 0.9 
   score_thresh: 35 
   score_increment: 3
   score_decrement: 1
